@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Great Leap Years — Timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:            #FAFAF9;
+  --surface:       #FFFFFF;
+  --border-normal: #E7E5E4;
+  --border-ghost:  #D6D3D1;
+  --amber:         #B45309;
+  --text:          #1C1917;
+  --muted:         #78716C;
+  --light:         #A8A29E;
+  --radius:        10px;
+  --node-w:        260px;
+  --map-w:         960px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.page-header {
+  padding: 56px 40px 32px;
+  max-width: calc(var(--map-w) + 80px);
+  margin: 0 auto;
+  border-bottom: 1px solid var(--border-normal);
+}
+.page-header h1 { font-size: 24px; font-weight: 600; }
+.page-header p  { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+#scroll-wrap { overflow-x: auto; padding: 0 40px 120px; }
+#map { position: relative; width: var(--map-w); margin: 0 auto; }
+
+#lines {
+  position: absolute; top: 0; left: 0;
+  width: 100%; pointer-events: none; overflow: visible;
+}
+
+.era-label {
+  position: absolute; left: 0; right: 0;
+  display: flex; align-items: baseline; gap: 12px;
+  transition: top 0.32s ease;
+}
+.era-label h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; color: var(--amber); }
+.era-label span { font-size: 12px; color: var(--light); }
+
+.node {
+  position: absolute;
+  width: var(--node-w);
+  background: var(--surface);
+  border: 1.5px solid var(--border-normal);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transform: translateX(-50%);
+  transition: border-color 0.2s, opacity 0.25s, filter 0.25s, box-shadow 0.2s, background 0.2s;
+  overflow: hidden;
+}
+.node:hover { border-color: var(--muted); }
+
+.node-head {
+  padding: 12px 14px;
+  user-select: none;
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.node-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #F0EBE3;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1px;
+}
+.node-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av-fallback { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.3px; }
+
+.node-head-text { flex: 1; min-width: 0; padding-right: 20px; }
+.node-type {
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--light); margin-bottom: 3px;
+}
+.node-title { font-size: 15px; font-weight: 500; line-height: 1.3; color: var(--text); }
+.node-date  { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.node-chevron {
+  position: absolute;
+  top: 13px; right: 13px;
+  font-size: 16px;
+  color: var(--light);
+  transition: transform 0.22s;
+  line-height: 1;
+}
+.node.open .node-chevron { transform: rotate(180deg); }
+
+.node-detail { max-height: 0; overflow: hidden; transition: max-height 0.32s ease; }
+.node.open .node-detail { max-height: 600px; }
+.node-detail-inner {
+  border-top: 1px solid #F0EDEA;
+  padding: 12px 14px 14px;
+  font-size: 12.5px; color: var(--muted); line-height: 1.75;
+}
+
+.node.is-ghost      { border-color: var(--border-ghost); background: #FAFAF9; }
+.node.is-ancestor   { border-color: var(--amber) !important; background: #FFFBEB; }
+.node.is-descendant { border-color: #64748B !important; background: #F8FAFC; }
+.node.is-selected   { border-color: var(--amber) !important; box-shadow: 0 0 0 2px rgba(180,83,9,0.18); }
+.node.is-dimmed     { opacity: 0.38; filter: grayscale(40%); }
+.node.is-dimmed:hover { opacity: 0.62; border-color: var(--muted); cursor: pointer; }
+
+#toast {
+  position: fixed; bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: #1C1917; color: #FFF; font-size: 12px;
+  padding: 8px 18px; border-radius: 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s; z-index: 999; cursor: pointer;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Great Leap Years — Timeline</h1>
+  <p>Stephen Fry's history of technology. Click a node to trace its ancestry. Click again or Esc to reset.</p>
+</div>
+
+<div id="scroll-wrap">
+  <div id="map">
+    <svg id="lines"></svg>
+  </div>
+</div>
+
+<div id="toast">Tap here to collapse all</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  LAYOUT CONSTANTS
+// ═══════════════════════════════════════════════
+const COL     = { left: 160, center: 480, right: 800 };
+const NODE_W  = 260;
+const ERA_HEAD   = 48;
+const SECTION_PAD = 44;
+
+// ═══════════════════════════════════════════════
+//  ERA DEFINITIONS
+// ═══════════════════════════════════════════════
+const ERA_DEFS = [
+  { key:'prehistory', name:'Prehistory',    span:'2,000,000 – 10,000 BCE', startYear:-2000000, endYear:-3500,  budget:800  },
+  { key:'ancient',    name:'Ancient World', span:'3,500 BCE – 500 CE',      startYear:-3500,    endYear:500,    budget:500  },
+  { key:'medieval',   name:'Medieval',      span:'500 – 1600 CE',           startYear:500,      endYear:1600,   budget:600  },
+  { key:'industrial', name:'Industrial',    span:'1600 – 1930',             startYear:1600,     endYear:1930,   budget:2200 },
+  { key:'computing',  name:'Computing Era', span:'1910 – present',          startYear:1910,     endYear:2025,   budget:900  },
+];
+
+// ∨ chevrons mark era transitions with no direct causal link to the next era
+const CHEVRON_AFTER_ERAS = new Set(['medieval']);
+
+// ═══════════════════════════════════════════════
+//  NODE DATA
+//  dateNum for PEOPLE = birth year
+//  dateNum for INVENTIONS/EVENTS = event year
+// ═══════════════════════════════════════════════
+const NODES = {
+
+  // ── PREHISTORY ──────────────────────────────
+  'first-tools': {
+    col:'center', type:'invention', eraKey:'prehistory',
+    dateNum:-2000000, date:'2,000,000 BCE', title:'First Tool-Making',
+    avatar:{ type:'emoji', emoji:'🪨' },
+    body:'Our ancestors begin deliberately shaping stone — the earliest sign of a technological species. These weren\'t simply found objects; they were shaped to extend our natural capabilities. Oldowan tools in East Africa: a cognitive threshold crossed.'
+  },
+  'cognitive-revolution': {
+    col:'center', type:'concept', eraKey:'prehistory',
+    dateNum:-70000, date:'c. 70,000 BCE', title:'Cognitive Revolution',
+    avatar:{ type:'emoji', emoji:'💡' },
+    body:'Language emerges. For the first time, ideas, techniques and knowledge can be shared and built upon across generations — the big bang of the human brain. Harari identifies this as the first existential transformation of human life. Fiction becomes possible; so does culture.'
+  },
+  'agricultural-revolution': {
+    col:'center', type:'event', eraKey:'prehistory',
+    dateNum:-10000, date:'c. 10,000 BCE', title:'Agricultural Revolution',
+    avatar:{ type:'emoji', emoji:'🌾' },
+    body:'In Mesopotamia — the fertile crescent between the Tigris and Euphrates — settled farming replaces nomadic foraging. Surplus calories fund specialisation, cities, bureaucracy, and a pressing need for record-keeping. The conditions for writing are set.'
+  },
+
+  // ── ANCIENT WORLD ────────────────────────────
+  'cuneiform-writing': {
+    col:'center', type:'invention', eraKey:'ancient',
+    dateNum:-3400, date:'c. 3,400 BCE', title:'Cuneiform Writing',
+    avatar:{ type:'emoji', emoji:'📜' },
+    body:'In Mesopotamia, Sumerian scribes press wedge-shaped marks into clay tablets to record grain, livestock and debts. Abstract symbols gradually encode phonetic sounds — language becomes permanent. For the first time, information can survive its creator.'
+  },
+  'phoenician-alphabet': {
+    col:'center', type:'invention', eraKey:'ancient',
+    dateNum:-1050, date:'c. 1,050 BCE', title:'Phoenician Alphabet',
+    avatar:{ type:'emoji', emoji:'🔤' },
+    body:'The Phoenicians, master traders of the Mediterranean, develop a 22-consonant script simple enough for merchants, not just priests. Unlike hieroglyphics or cuneiform, it spreads via trade routes and becomes the ancestor of Greek, Latin, Arabic and Hebrew scripts — nearly every alphabet in use today.'
+  },
+  'cai-lun': {
+    col:'left', type:'person', eraKey:'ancient',
+    dateNum:50, date:'b. c. 50 CE', title:'Cai Lun',
+    avatar:{ type:'initials', initials:'CL' },
+    body:'Chinese court official who standardised the production of paper from bark, hemp rags and fishing nets around 105 CE. Where papyrus required specific Nile reeds and parchment needed animal skins, Cai Lun\'s paper could be made anywhere from almost anything. The Emperor ordered its adoption throughout the empire.'
+  },
+  'paper': {
+    col:'center', type:'invention', eraKey:'ancient',
+    dateNum:105, date:'105 CE', title:'Paper',
+    avatar:{ type:'emoji', emoji:'📄' },
+    body:'Paper spreads from China westward along the Silk Road: Samarkand by 750 CE, Baghdad by 793, Cairo by 900, and finally Europe by the 12th century. Cheaper and more flexible than parchment, paper transforms scholarship, bureaucracy and — once combined with Gutenberg\'s press — mass communication.'
+  },
+
+  // ── MEDIEVAL ──────────────────────────────────
+  'woodblock-printing': {
+    col:'right', type:'invention', eraKey:'medieval',
+    dateNum:1040, date:'c. 1040 CE (China)', title:'Woodblock & Movable Type',
+    avatar:{ type:'emoji', emoji:'🀫' }, ghost:true,
+    body:'Bi Sheng creates ceramic movable type in China 400 years before Gutenberg. Woodblock printing dominates East Asia but never migrates to Europe — the economics are very different for thousands of Chinese characters versus 26 Latin letters. An elegant solution that solves the wrong problem for Europe.'
+  },
+  'gutenberg': {
+    col:'left', type:'person', eraKey:'medieval',
+    dateNum:1398, date:'b. c. 1398', title:'Johannes Gutenberg',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Gutenberg_Kohler.jpg/120px-Gutenberg_Kohler.jpg', initials:'JG' },
+    body:'German goldsmith who first attempted a failed business selling pilgrim mirrors. His metallurgy skills led him to invent movable type — combining a screw press, oil-based ink, and cast metal type. He died broke; his backer Fust sued and took the press. He never saw the revolution he started.'
+  },
+  'gutenberg-press': {
+    col:'center', type:'invention', eraKey:'medieval',
+    dateNum:1450, date:'c. 1450', title:'Gutenberg\'s Printing Press',
+    avatar:{ type:'emoji', emoji:'⚙️' },
+    body:'Gutenberg synthesises a wine-press, oil-based ink, and cast metal type in a lead-tin-antimony alloy. Output: 3,600 pages per day versus a scribe\'s two. Within 50 years, 20 million books are in circulation across Europe. The Church\'s monopoly on information is broken before anyone quite realises it.'
+  },
+  'martin-luther': {
+    col:'left', type:'person', eraKey:'medieval',
+    dateNum:1483, date:'b. 1483', title:'Martin Luther',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Martin_Luther_by_Cranach-restoration.jpg/120px-Martin_Luther_by_Cranach-restoration.jpg', initials:'ML' },
+    body:'Former Augustinian monk and theology professor whose 95 Theses challenged papal indulgences. What made Luther\'s revolt stick where earlier reformers had failed? Gutenberg\'s press. Within two weeks, his pamphlets spread across Germany; within months, all Europe. He understood the medium before anyone else did.'
+  },
+  'protestant-reformation': {
+    col:'center', type:'event', eraKey:'medieval',
+    dateNum:1517, date:'1517', title:'Protestant Reformation',
+    avatar:{ type:'emoji', emoji:'📌' },
+    body:'Luther\'s revolt, enabled by print, shatters Christendom\'s unity. Competing Bible translations drive literacy across Europe — people must read to know God directly. The Reformation demonstrates that cheap information technology doesn\'t just change what people know; it changes who has power.'
+  },
+
+  // ── INDUSTRIAL ────────────────────────────────
+  'newton': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1643, date:'b. 1643', title:'Isaac Newton',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Portrait_of_Sir_Isaac_Newton%2C_1689.jpg/120px-Portrait_of_Sir_Isaac_Newton%2C_1689.jpg', initials:'IN' },
+    body:'Escaped the 1665 plague by retreating to his family farm, where he invented calculus, discovered the composition of light, and formulated his laws of motion and universal gravitation. His Principia Mathematica (1687) establishes that nature follows mathematical laws — the founding text of the Scientific Revolution.'
+  },
+  'scientific-revolution': {
+    col:'center', type:'concept', eraKey:'industrial',
+    dateNum:1687, date:'1687', title:'Scientific Revolution',
+    avatar:{ type:'emoji', emoji:'🔭' },
+    body:'Newton\'s Principia synthesises Copernicus, Galileo and Kepler into a unified framework: the universe operates by discoverable, mathematical laws. This shift — from revealed truth to testable hypothesis — becomes the engine for every subsequent technological advance. Science as method, not just knowledge.'
+  },
+  'volta': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1745, date:'b. 1745', title:'Alessandro Volta',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Volta_A.jpg/120px-Volta_A.jpg', initials:'AV' },
+    body:'Creates the voltaic pile (1800) — the first chemical battery, producing a steady controllable current. Napoleon institutes the Volta Prize worth roughly €100,000 today to spur further innovation. The unit of electrical potential, the volt, bears his name. His pile opens the age of practical electricity.'
+  },
+  'volta-battery': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1800, date:'1800', title:'Voltaic Pile (First Battery)',
+    avatar:{ type:'emoji', emoji:'🔋' },
+    body:'By stacking alternating copper and zinc discs separated by brine-soaked cloth, Volta creates the first device capable of producing continuous electrical current. Davy uses it to discover new elements. Faraday uses it to discover electromagnetic induction. Every subsequent leap in electricity begins here.'
+  },
+  'faraday': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1791, date:'b. 1791', title:'Michael Faraday',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Faraday%2C_Michael_sci_miMS_frontis.jpg/120px-Faraday%2C_Michael_sci_miMS_frontis.jpg', initials:'MF' },
+    body:'Son of a blacksmith with no formal education. Taught himself chemistry by reading every book he could borrow, then talked his way into a job as Davy\'s lab assistant. His 1831 discovery that moving a magnet inside a coil generates current — electromagnetic induction — makes electricity useful to the world.'
+  },
+  'electromagnetism': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1831, date:'1831', title:'Electromagnetic Induction',
+    avatar:{ type:'emoji', emoji:'⚡' },
+    body:'Faraday\'s induction coil (1831) demonstrates that electricity and magnetism are two expressions of one force. Maxwell\'s equations (1865) unify them mathematically and predict the existence of electromagnetic waves travelling at the speed of light. Every radio, television, wireless signal and motor begins here.'
+  },
+  'morse': {
+    col:'right', type:'person', eraKey:'industrial',
+    dateNum:1791, date:'b. 1791', title:'Samuel Morse',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Samuel_Morse_1840.jpg/120px-Samuel_Morse_1840.jpg', initials:'SM' },
+    body:'Failed portrait painter who heard about Faraday\'s discoveries on a ship from Europe. During the voyage he sketched a system to encode letters as electrical pulses. With crucial help from Joseph Henry on the electromagnet, within twelve years he had a working telegraph line from Washington to Baltimore.'
+  },
+  'telegraph': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1844, date:'1844', title:'Electric Telegraph',
+    avatar:{ type:'emoji', emoji:'📡' },
+    body:'The first message on Morse\'s Baltimore–Washington line (1844): "What hath God wrought." Within two decades, 50,000 miles of wire criss-cross America. The telegraph reduces cross-country message time from weeks to minutes — the first time in human history that information travels faster than a human body.'
+  },
+  'bell': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1847, date:'b. 1847', title:'Alexander Graham Bell',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Alexander_Graham_Bell_1908.jpg/120px-Alexander_Graham_Bell_1908.jpg', initials:'AB' },
+    body:'Scottish-American inventor and teacher of the deaf who was fascinated by the mechanics of the human voice. His telephone patent (March 10, 1876) was filed just hours before rival Elisha Gray\'s claim. The resulting legal battle — over 600 lawsuits — was the most complex in US history to that point.'
+  },
+  'telephone': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1876, date:'1876', title:'Telephone',
+    avatar:{ type:'emoji', emoji:'📞' },
+    body:'Bell\'s first call to Watson: "Mr Watson, come here — I want to see you." Within a decade, 150,000 US subscribers. Unlike the telegraph which required trained Morse code operators, the telephone puts communication directly in everyone\'s hands — no intermediary, no decoding, no specialist needed.'
+  },
+  'hertz': {
+    col:'right', type:'person', eraKey:'industrial',
+    dateNum:1857, date:'b. 1857', title:'Heinrich Hertz',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Heinrich_Rudolf_Hertz.jpg/120px-Heinrich_Rudolf_Hertz.jpg', initials:'HH' },
+    body:'Physicist who proved Maxwell\'s prediction correct: electromagnetic waves exist and travel at the speed of light. In 1887 he generated and detected radio waves in his lab using a spark gap transmitter. "I don\'t see any practical application," he reportedly said. The unit of frequency bears his name.'
+  },
+  'radio-waves': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1887, date:'1887', title:'Radio Waves Demonstrated',
+    avatar:{ type:'emoji', emoji:'〰️' },
+    body:'Hertz\'s 1887 experiments are pure science — proving Maxwell\'s equations, nothing more. But across Europe, engineers and entrepreneurs immediately grasp what he missed: electromagnetic waves can carry information through the air without wires. The race for wireless telegraphy begins within the decade.'
+  },
+  'marconi': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1874, date:'b. 1874', title:'Guglielmo Marconi',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Guglielmo_Marconi.jpg/120px-Guglielmo_Marconi.jpg', initials:'GM' },
+    body:'Twenty-year-old Italian nobleman who read about Hertz\'s experiments and immediately grasped their commercial potential. No university would fund him; his wealthy mother financed his early experiments. In 1901 he transmitted wirelessly from Cornwall to Newfoundland — 3,500 km through the air.'
+  },
+  'wireless-telegraph': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1901, date:'1901', title:'Wireless Telegraphy',
+    avatar:{ type:'emoji', emoji:'📻' },
+    body:'Marconi\'s 1901 transatlantic transmission proves radio waves follow Earth\'s curvature (via the ionosphere, though this wasn\'t understood until 1902). Wireless makes every ship at sea reachable. Lloyd\'s of London insists ships carry wireless equipment — which proves critical in 1912.'
+  },
+  'de-forest': {
+    col:'right', type:'person', eraKey:'industrial',
+    dateNum:1873, date:'b. 1873', title:'Lee de Forest',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Lee_de_Forest.jpg/120px-Lee_de_Forest.jpg', initials:'LF' },
+    body:'American inventor who added a third electrode to the vacuum tube to create the triode Audion (1906). The triode could amplify electrical signals — making long-distance telephone calls and broadcast radio possible. De Forest was convicted of mail fraud promoting it and spent years in litigation. His invention outlasted his reputation.'
+  },
+  'vacuum-tube': {
+    col:'center', type:'invention', eraKey:'industrial',
+    dateNum:1906, date:'1904 – 1906', title:'Vacuum Tube',
+    avatar:{ type:'emoji', emoji:'💡' },
+    body:'Fleming\'s diode (1904) detects radio waves; de Forest\'s triode (1906) amplifies them. By the 1920s, vacuum tubes power radios, then telephone exchanges, then the first computers. ENIAC (1945) used 17,468 of them. They ran hot, burnt out constantly, and consumed enormous power. The transistor made them obsolete overnight.'
+  },
+  'titanic-radio': {
+    col:'right', type:'event', eraKey:'industrial',
+    dateNum:1912, date:'1912', title:'Titanic & the Radio Act',
+    avatar:{ type:'emoji', emoji:'🚢' }, ghost:true,
+    body:'April 14, 1912: the Titanic\'s operators receive six ice warnings but are busy relaying passengers\' personal messages. The nearby Californian\'s single operator has gone to bed. 1,517 die. The Radio Act of 1912 mandates 24-hour wireless watches and standardises distress frequencies — tragedy as the driver of regulation.'
+  },
+  'tesla': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1856, date:'b. 1856', title:'Nikola Tesla',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/N.Tesla.JPG/120px-N.Tesla.JPG', initials:'NT' },
+    body:'Visionary inventor who grasped the advantages of alternating current. Worked briefly for Edison before splitting to partner with Westinghouse. His polyphase AC motor and transformer system won the War of Currents — but he died penniless, his patents exploited, chasing wireless power transmission to the end.'
+  },
+  'tesla-ac': {
+    col:'right', type:'invention', eraKey:'industrial',
+    dateNum:1893, date:'1893', title:'Tesla & Westinghouse AC',
+    avatar:{ type:'emoji', emoji:'⚡' },
+    body:'Tesla, working with Westinghouse, demonstrates AC can travel hundreds of miles via transformers. Their triumph at the 1893 Chicago World\'s Fair — 200,000 bulbs lit — and the Niagara Falls plant (1895) settles the War of Currents. AC becomes the global standard for power transmission.'
+  },
+  'edison': {
+    col:'left', type:'person', eraKey:'industrial',
+    dateNum:1847, date:'b. 1847', title:'Thomas Edison',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Thomas_Edison2.jpg/120px-Thomas_Edison2.jpg', initials:'TE' },
+    body:'Prolific inventor and ruthless businessman who founded General Electric and built the first commercial electrical grid. Fought the War of Currents with every trick available — publicly electrocuting animals to discredit AC, secretly funding the electric chair to associate it with death. His DC attachment ultimately lost to physics.'
+  },
+  'edison-dc': {
+    col:'right', type:'invention', eraKey:'industrial',
+    dateNum:1882, date:'1882', title:'Edison\'s DC Power Grid',
+    avatar:{ type:'emoji', emoji:'⚙️' }, ghost:true,
+    body:'Edison\'s Pearl Street Station (1882) lights 59 Manhattan customers with direct current. But DC can only travel about a mile from a generator before degrading. No amount of commercial muscle or publicity stunts could overcome the physics: transformers only work with AC. The War of Currents ends badly for Edison.'
+  },
+
+  // ── COMPUTING ERA ─────────────────────────────
+  'turing': {
+    col:'left', type:'person', eraKey:'computing',
+    dateNum:1912, date:'b. 1912', title:'Alan Turing',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Alan_Turing_Aged_16.jpg/120px-Alan_Turing_Aged_16.jpg', initials:'AT' },
+    body:'Cambridge mathematician and wartime codebreaker at Bletchley Park, where his Bombe machine cracked Enigma. His 1936 paper "On Computable Numbers" describes a theoretical universal machine — the conceptual blueprint for every computer built since. Prosecuted in 1952 for homosexuality, chemically castrated. Pardoned posthumously in 2013.'
+  },
+  'shannon': {
+    col:'right', type:'person', eraKey:'computing',
+    dateNum:1916, date:'b. 1916', title:'Claude Shannon',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Claude_Elwood_Shannon_%281916-2001%29.jpg/120px-Claude_Elwood_Shannon_%281916-2001%29.jpg', initials:'CS' },
+    body:'Bell Labs mathematician who published "A Mathematical Theory of Communication" in 1948 — possibly the most consequential paper of the 20th century. Shannon proved that information can be quantified in bits, that any signal can be transmitted error-free if encoded correctly, and set the theoretical limits of all communication.'
+  },
+  'turing-machine': {
+    col:'center', type:'concept', eraKey:'computing',
+    dateNum:1936, date:'1936', title:'The Turing Machine',
+    avatar:{ type:'emoji', emoji:'📐' },
+    body:'Turing\'s 1936 thought experiment: a machine that reads symbols on an infinite tape and follows a set of rules can compute anything computable. The paper was solving a mathematical problem (Hilbert\'s Entscheidungsproblem), not designing hardware — but it defined what computation means. Every CPU since is a physical Turing machine.'
+  },
+  'transistor': {
+    col:'center', type:'invention', eraKey:'computing',
+    dateNum:1947, date:'1947', title:'Transistor Invented',
+    avatar:{ type:'emoji', emoji:'⚙️' },
+    body:'Bell Labs: Bardeen, Brattain and Shockley create a solid-state device consuming one-millionth the power of a vacuum tube, with no warm-up time and theoretically limitless miniaturisation. The name \'transistor\' beat competing suggestions including \'Iota-Tron\'. Nobel Prize, 1956. Silicon Valley begins here.'
+  },
+  'information-theory': {
+    col:'center', type:'concept', eraKey:'computing',
+    dateNum:1948, date:'1948', title:'Information Theory',
+    avatar:{ type:'emoji', emoji:'📊' },
+    body:'Shannon\'s 1948 paper establishes that all information — text, sound, image — can be expressed as binary digits and transmitted with mathematical precision. His channel capacity theorem defines the theoretical maximum data rate of any communication channel. Every compression algorithm, error-correcting code and streaming protocol descends from this work.'
+  },
+  'kilby': {
+    col:'left', type:'person', eraKey:'computing',
+    dateNum:1923, date:'b. 1923', title:'Jack Kilby',
+    avatar:{ type:'portrait', src:'https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Jack_Kilby.jpg/120px-Jack_Kilby.jpg', initials:'JK' },
+    body:'Texas Instruments engineer who — during his first summer as a new employee (everyone else was on holiday; he had no vacation entitlement yet) — built the first working integrated circuit in 1958. He soldered a sliver of germanium with gold wire on his bench. Shared the Nobel Prize in Physics in 2000.'
+  },
+  'integrated-circuit': {
+    col:'center', type:'invention', eraKey:'computing',
+    dateNum:1958, date:'1958', title:'Integrated Circuit',
+    avatar:{ type:'emoji', emoji:'🔲' },
+    body:'Kilby\'s IC (1958) and Noyce\'s silicon chip (1959, Fairchild) solve the "tyranny of numbers" — the impossibility of wiring together thousands of discrete transistors reliably. Everything on one piece of silicon. Moore\'s Law follows naturally: the same area packs ever more transistors as fabrication improves.'
+  },
+  'moores-law': {
+    col:'center', type:'concept', eraKey:'computing',
+    dateNum:1965, date:'1965', title:'Moore\'s Law',
+    avatar:{ type:'emoji', emoji:'📈' },
+    body:'Intel co-founder Gordon Moore observed in 1965 that the number of transistors per chip had doubled every year since 1959. He predicted this would continue. It did — for fifty years. Moore\'s Law is less a natural law than a self-fulfilling prophecy: it became an industry roadmap, and the industry built to it.'
+  },
+  'deep-blue': {
+    col:'right', type:'event', eraKey:'computing',
+    dateNum:1997, date:'1997', title:'Deep Blue Beats Kasparov',
+    avatar:{ type:'emoji', emoji:'♟️' }, ghost:true,
+    body:'IBM\'s Deep Blue defeats world chess champion Garry Kasparov in a six-game match. Kasparov accuses IBM of cheating — he senses "creativity and intelligence" in some moves. Later analysis suggests it was a bug producing a random move that unnerved him. Deep Blue calculated 200 million positions per second — brute force with no understanding.'
+  },
+  'alphago': {
+    col:'center', type:'event', eraKey:'computing',
+    dateNum:2016, date:'2016', title:'AlphaGo & the New Intelligence',
+    avatar:{ type:'emoji', emoji:'🧠' },
+    body:'DeepMind\'s AlphaGo defeats world Go champion Lee Sedol 4-1. Unlike Deep Blue, AlphaGo cannot brute-force Go\'s 10¹⁷⁰ possible positions. It uses deep reinforcement learning — training against itself millions of times. Move 37 of Game 2 was described by commentators as "not a human move". Something had changed.'
+  },
+};
+
+// ═══════════════════════════════════════════════
+//  CONNECTIONS
+// ═══════════════════════════════════════════════
+const CONNECTIONS = [
+  // Prehistory chain
+  { from:'first-tools',             to:'cognitive-revolution',    type:'trunk' },
+  { from:'cognitive-revolution',    to:'agricultural-revolution', type:'trunk' },
+  // Prehistoric → Ancient
+  { from:'agricultural-revolution', to:'cuneiform-writing',       type:'trunk' },
+  // Ancient chain
+  { from:'cuneiform-writing',       to:'phoenician-alphabet',     type:'trunk' },
+  { from:'cai-lun',                 to:'paper',                   type:'person' },
+  { from:'phoenician-alphabet',     to:'paper',                   type:'trunk' },
+  // Ancient → Medieval (fork: Chinese woodblock vs Gutenberg)
+  { from:'paper',                   to:'gutenberg-press',         type:'trunk', fork:'woodblock-printing' },
+  { from:'paper',                   to:'woodblock-printing',      type:'ghost' },
+  // Medieval
+  { from:'gutenberg',               to:'gutenberg-press',         type:'person' },
+  { from:'gutenberg-press',         to:'protestant-reformation',  type:'trunk' },
+  { from:'martin-luther',           to:'protestant-reformation',  type:'person' },
+  // ∨ chevron after medieval (no direct causal link to Industrial)
+  // Industrial — main info-tech trunk
+  { from:'newton',                  to:'scientific-revolution',   type:'person' },
+  { from:'scientific-revolution',   to:'volta-battery',           type:'trunk' },
+  { from:'volta',                   to:'volta-battery',           type:'person' },
+  { from:'volta-battery',           to:'electromagnetism',        type:'trunk' },
+  { from:'faraday',                 to:'electromagnetism',        type:'person' },
+  { from:'electromagnetism',        to:'telegraph',               type:'trunk' },
+  { from:'morse',                   to:'telegraph',               type:'person' },
+  { from:'telegraph',               to:'telephone',               type:'trunk' },
+  { from:'bell',                    to:'telephone',               type:'person' },
+  { from:'telephone',               to:'wireless-telegraph',      type:'trunk' },
+  { from:'hertz',                   to:'radio-waves',             type:'person' },
+  { from:'radio-waves',             to:'wireless-telegraph',      type:'trunk' },
+  { from:'marconi',                 to:'wireless-telegraph',      type:'person' },
+  { from:'wireless-telegraph',      to:'vacuum-tube',             type:'trunk', fork:'titanic-radio' },
+  { from:'wireless-telegraph',      to:'titanic-radio',           type:'ghost' },
+  { from:'de-forest',               to:'vacuum-tube',             type:'person' },
+  // Industrial — War of Currents side branch (from electromagnetism → right side)
+  { from:'volta-battery',           to:'tesla-ac',                type:'trunk', fork:'edison-dc' },
+  { from:'volta-battery',           to:'edison-dc',               type:'ghost' },
+  { from:'tesla',                   to:'tesla-ac',                type:'person' },
+  { from:'edison',                  to:'edison-dc',               type:'person' },
+  // Industrial → Computing (direct trunk link — no chevron)
+  { from:'vacuum-tube',             to:'transistor',              type:'trunk' },
+  // Computing
+  { from:'turing',                  to:'turing-machine',          type:'person' },
+  { from:'turing-machine',          to:'transistor',              type:'trunk' },
+  { from:'shannon',                 to:'information-theory',      type:'person' },
+  { from:'transistor',              to:'information-theory',      type:'trunk' },
+  { from:'kilby',                   to:'integrated-circuit',      type:'person' },
+  { from:'information-theory',      to:'integrated-circuit',      type:'trunk' },
+  { from:'integrated-circuit',      to:'moores-law',              type:'trunk' },
+  { from:'moores-law',              to:'alphago',                 type:'trunk', fork:'deep-blue' },
+  { from:'moores-law',              to:'deep-blue',               type:'ghost' },
+];
+
+// ═══════════════════════════════════════════════
+//  ANCESTOR MAP
+// ═══════════════════════════════════════════════
+const PARENTS = {};
+const CHILDREN = {};
+CONNECTIONS.forEach(c => {
+  if (!PARENTS[c.to]) PARENTS[c.to] = [];
+  PARENTS[c.to].push(c.from);
+  if (!CHILDREN[c.from]) CHILDREN[c.from] = [];
+  CHILDREN[c.from].push(c.to);
+  if (c.fork) {
+    if (!PARENTS[c.fork]) PARENTS[c.fork] = [];
+    PARENTS[c.fork].push(c.from);
+    if (!CHILDREN[c.from]) CHILDREN[c.from] = [];
+    if (!CHILDREN[c.from].includes(c.fork)) CHILDREN[c.from].push(c.fork);
+  }
+});
+
+function getAncestors(id) {
+  const visited = new Set(), q = [id];
+  while (q.length) {
+    const cur = q.shift();
+    if (visited.has(cur)) continue;
+    visited.add(cur);
+    (PARENTS[cur] || []).forEach(p => q.push(p));
+  }
+  return visited;
+}
+
+function getDescendants(id) {
+  const visited = new Set(), q = [id];
+  while (q.length) {
+    const cur = q.shift();
+    if (visited.has(cur)) continue;
+    visited.add(cur);
+    (CHILDREN[cur] || []).forEach(ch => q.push(ch));
+  }
+  return visited;
+}
+
+function getRelated(id) {
+  return { anc: getAncestors(id), desc: getDescendants(id) };
+}
+
+// ═══════════════════════════════════════════════
+//  LAYOUT — proportional date-based positioning
+// ═══════════════════════════════════════════════
+let nodePos = {};
+let mapBaseHeight = 0;
+
+const COLLAPSED_H = 88;
+const MIN_GAP     = COLLAPSED_H + 40; // 128px
+
+function layoutByDate() {
+  const SECTION_GAP = 120;
+  const TOP_PAD = 60;
+
+  const rawY = {};
+  ERA_DEFS.forEach(era => {
+    const span = era.endYear - era.startYear;
+    Object.entries(NODES).forEach(([id, n]) => {
+      if (n.eraKey !== era.key) return;
+      rawY[id] = Math.min(1, Math.max(0, (n.dateNum - era.startYear) / span)) * era.budget;
+    });
+  });
+
+  ERA_DEFS.forEach(era => {
+    ['left', 'center', 'right'].forEach(col => {
+      const ns = Object.keys(NODES)
+        .filter(id => NODES[id].eraKey === era.key && NODES[id].col === col)
+        .sort((a, b) => rawY[a] - rawY[b]);
+      for (let i = 1; i < ns.length; i++) {
+        if (rawY[ns[i]] - rawY[ns[i-1]] < MIN_GAP) {
+          rawY[ns[i]] = rawY[ns[i-1]] + MIN_GAP;
+        }
+      }
+    });
+    const ids = Object.keys(NODES).filter(id => NODES[id].eraKey === era.key);
+    if (ids.length) era.budget = Math.max(era.budget, Math.max(...ids.map(id => rawY[id])) + 80);
+  });
+
+  let cursor = TOP_PAD;
+  ERA_DEFS.forEach(era => {
+    cursor += SECTION_PAD;
+    era._labelY   = cursor;
+    cursor       += ERA_HEAD;
+    era._nodeTopY = cursor;
+    cursor       += era.budget;
+    era._endY     = cursor;
+    cursor       += SECTION_GAP;
+  });
+  mapBaseHeight = cursor + 80;
+
+  Object.entries(NODES).forEach(([id, n]) => {
+    const era = ERA_DEFS.find(e => e.key === n.eraKey);
+    if (!era) return;
+    nodePos[id] = { x: COL[n.col], y: era._nodeTopY + rawY[id], h: COLLAPSED_H };
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  EXPAND REFLOW
+// ═══════════════════════════════════════════════
+const openNodes = new Set();
+
+function repositionNodes() {
+  const allItems = [];
+  Object.keys(nodePos).forEach(id =>
+    allItems.push({ type:'node', id, baseY: nodePos[id].y }));
+  ERA_DEFS.forEach(era =>
+    allItems.push({ type:'era', key: era.key, baseY: era._labelY }));
+  allItems.sort((a, b) => a.baseY - b.baseY);
+
+  let cumExtra   = 0;
+  let groupExtra = 0;
+  let lastBaseY  = -Infinity;
+
+  allItems.forEach(item => {
+    const baseY = item.baseY;
+    if (baseY > lastBaseY + 1) {
+      cumExtra   += groupExtra;
+      groupExtra  = 0;
+      lastBaseY   = baseY;
+    }
+    const effectiveY = baseY + cumExtra;
+
+    if (item.type === 'node') {
+      const el = document.querySelector(`.node[data-id="${item.id}"]`);
+      if (el) el.style.top = effectiveY + 'px';
+      if (openNodes.has(item.id) && el) {
+        const extra = Math.max(0, el.offsetHeight - nodePos[item.id].h);
+        if (extra > groupExtra) groupExtra = extra;
+      }
+    } else {
+      const el = document.querySelector(`.era-label[data-era="${item.key}"]`);
+      if (el) el.style.top = effectiveY + 'px';
+    }
+  });
+
+  let maxBot = mapBaseHeight + cumExtra + groupExtra;
+  Object.keys(nodePos).forEach(id => {
+    const el = document.querySelector(`.node[data-id="${id}"]`);
+    if (el) maxBot = Math.max(maxBot, parseFloat(el.style.top) + el.offsetHeight + 80);
+  });
+  document.getElementById('map').style.height = maxBot + 'px';
+}
+
+// ═══════════════════════════════════════════════
+//  AVATAR HTML
+// ═══════════════════════════════════════════════
+function avatarHTML(n) {
+  const a = n.avatar;
+  if (!a) return '';
+  if (a.type === 'portrait') {
+    return `<img src="${a.src}" alt="" loading="lazy"
+      onload="this.nextElementSibling.style.display='none'"
+      onerror="this.style.display='none';this.nextElementSibling.style.display=''">
+      <span class="av-fallback">${a.initials}</span>`;
+  }
+  if (a.type === 'emoji')    return `<span style="font-size:17px;line-height:1">${a.emoji}</span>`;
+  if (a.type === 'initials') return `<span class="av-fallback">${a.initials}</span>`;
+  return '';
+}
+
+// ═══════════════════════════════════════════════
+//  BUILD DOM
+// ═══════════════════════════════════════════════
+function buildDOM() {
+  const map = document.getElementById('map');
+  map.querySelectorAll('.node, .era-label').forEach(el => el.remove());
+
+  ERA_DEFS.forEach(era => {
+    const el = document.createElement('div');
+    el.className = 'era-label';
+    el.dataset.era = era.key;
+    el.style.top = era._labelY + 'px';
+    el.innerHTML = `<h2>${era.name}</h2><span>${era.span}</span>`;
+    map.appendChild(el);
+  });
+
+  Object.entries(nodePos).forEach(([id, pos]) => {
+    const n = NODES[id];
+    if (!n) return;
+    const el = document.createElement('div');
+    el.className = 'node' + (n.ghost ? ' is-ghost' : '');
+    el.dataset.id = id;
+    el.style.left = pos.x + 'px';
+    el.style.top  = pos.y + 'px';
+    el.innerHTML = `
+      <div class="node-head">
+        <div class="node-avatar">${avatarHTML(n)}</div>
+        <div class="node-head-text">
+          <div class="node-type">${n.type}</div>
+          <div class="node-title">${n.title}</div>
+          <div class="node-date">${n.date}</div>
+        </div>
+        <span class="node-chevron">▾</span>
+      </div>
+      <div class="node-detail">
+        <div class="node-detail-inner">${n.body}</div>
+      </div>`;
+    el.addEventListener('click', e => { e.stopPropagation(); handleNodeClick(id, el); });
+    map.appendChild(el);
+  });
+
+  map.style.height = mapBaseHeight + 'px';
+}
+
+function syncHeights() {
+  document.querySelectorAll('.node').forEach(el => {
+    const id = el.dataset.id;
+    if (nodePos[id]) nodePos[id].h = el.offsetHeight;
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  SVG DRAWING
+// ═══════════════════════════════════════════════
+function getNodeCenter(id) {
+  const el = document.querySelector(`.node[data-id="${id}"]`);
+  if (!el) return null;
+  const mr = document.getElementById('map').getBoundingClientRect();
+  const nr = el.getBoundingClientRect();
+  return { x: nr.left-mr.left+nr.width/2, top: nr.top-mr.top, bot: nr.bottom-mr.top, w: nr.width, h: nr.height };
+}
+
+function drawPath(svg, d, cls) {
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', d); p.setAttribute('class', cls);
+  p.setAttribute('fill','none'); p.setAttribute('stroke-linecap','round');
+  svg.appendChild(p);
+}
+function bezierV(x1,y1,x2,y2) { const my=(y1+y2)/2; return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`; }
+function bezierH(x1,y1,x2,y2) { const mx=(x1+x2)/2; return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`; }
+
+function drawChevron(svg, cx, topY) {
+  const hw=30, h=11;
+  [[cx-hw,topY,cx,topY+h],[cx+hw,topY,cx,topY+h]].forEach(([x1,y1,x2,y2]) => {
+    const l = document.createElementNS('http://www.w3.org/2000/svg','line');
+    l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+    l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+    l.setAttribute('stroke','#C8C4BE'); l.setAttribute('stroke-width','1.5');
+    l.setAttribute('stroke-linecap','round');
+    svg.appendChild(l);
+  });
+}
+
+function drawLines(rel) {
+  const svg = document.getElementById('lines');
+  const map = document.getElementById('map');
+  svg.innerHTML = '';
+  svg.style.height = map.scrollHeight + 'px';
+
+  const style = document.createElementNS('http://www.w3.org/2000/svg','style');
+  style.textContent = `
+    path.trunk         { stroke:#D6D3D1; stroke-width:1.5; }
+    path.ghost         { stroke:#E0DDD9; stroke-width:1.5; stroke-dasharray:5 4; }
+    path.person        { stroke:#D1CBC3; stroke-width:1.5; }
+    path.active        { stroke:#B45309; stroke-width:2; }
+    path.active-ghost  { stroke:#D4956B; stroke-width:1.5; stroke-dasharray:5 4; }
+    path.active-person { stroke:#B45309; stroke-width:1.5; }
+    path.active-desc   { stroke:#64748B; stroke-width:2; }
+    path.active-desc-ghost  { stroke:#94A3B8; stroke-width:1.5; stroke-dasharray:5 4; }
+    path.active-desc-person { stroke:#64748B; stroke-width:1.5; }
+  `;
+  svg.appendChild(style);
+
+  const forkDone = new Set();
+
+  // Helper: classify a connection's highlight state
+  function connClass(from, to, baseClass, activeClass, descClass) {
+    if (!rel) return baseClass;
+    const inAnc  = rel.anc.has(from)  && rel.anc.has(to);
+    const inDesc = rel.desc.has(from) && rel.desc.has(to);
+    if (inAnc)  return activeClass;
+    if (inDesc) return descClass;
+    return baseClass;
+  }
+
+  CONNECTIONS.forEach(conn => {
+    const fromC = getNodeCenter(conn.from);
+    const toC   = getNodeCenter(conn.to);
+    if (!fromC || !toC) return;
+
+    if (conn.type === 'trunk') {
+      if (conn.fork) {
+        const forkC = getNodeCenter(conn.fork);
+        if (!forkC) return;
+        const stemX  = fromC.x;
+        const stemY1 = fromC.bot;
+        const forkY  = stemY1 + (Math.min(toC.top, forkC.top) - stemY1) * 0.45;
+
+        if (!forkDone.has(conn.from + conn.fork)) {
+          forkDone.add(conn.from + conn.fork);
+          // Stem color: amber if ancestor path, slate if descendant path
+          const inAnc  = rel && rel.anc.has(conn.from)  && rel.anc.has(conn.to);
+          const inDesc = rel && rel.desc.has(conn.from) && rel.desc.has(conn.to);
+          const stemColor = inAnc ? '#B45309' : inDesc ? '#64748B' : '#D6D3D1';
+          const stemW     = (inAnc || inDesc) ? '2' : '1.5';
+          const stem = document.createElementNS('http://www.w3.org/2000/svg','line');
+          stem.setAttribute('x1',stemX); stem.setAttribute('y1',stemY1);
+          stem.setAttribute('x2',stemX); stem.setAttribute('y2',forkY);
+          stem.setAttribute('stroke', stemColor);
+          stem.setAttribute('stroke-width', stemW);
+          svg.appendChild(stem);
+        }
+        drawPath(svg, bezierV(stemX,forkY,toC.x,toC.top),
+          connClass(conn.from, conn.to,   'trunk', 'active', 'active-desc'));
+        drawPath(svg, bezierV(stemX,forkY,forkC.x,forkC.top),
+          connClass(conn.from, conn.fork, 'ghost', 'active-ghost', 'active-desc-ghost'));
+      } else {
+        drawPath(svg, bezierV(fromC.x,fromC.bot,toC.x,toC.top),
+          connClass(conn.from, conn.to, 'trunk', 'active', 'active-desc'));
+      }
+    } else if (conn.type === 'person') {
+      const goRight = fromC.x < toC.x;
+      const fx = goRight ? fromC.x+fromC.w/2 : fromC.x-fromC.w/2;
+      const tx = goRight ? toC.x-toC.w/2     : toC.x+toC.w/2;
+      drawPath(svg, bezierH(fx,fromC.top+fromC.h/2,tx,toC.top+toC.h/2),
+        connClass(conn.from, conn.to, 'person', 'active-person', 'active-desc-person'));
+    }
+  });
+
+  // Chevrons: compute from actual bottommost node bottom in each era
+  CHEVRON_AFTER_ERAS.forEach(eraKey => {
+    let maxBot = 0;
+    Object.keys(NODES).filter(id => NODES[id].eraKey === eraKey).forEach(id => {
+      const c = getNodeCenter(id);
+      if (c && c.bot > maxBot) maxBot = c.bot;
+    });
+    if (maxBot > 0) drawChevron(svg, COL.center, maxBot + 28);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  INTERACTION
+// ═══════════════════════════════════════════════
+let selectedId = null;
+
+function handleNodeClick(id, el) {
+  // Toggle expand (independent of selection)
+  if (openNodes.has(id)) openNodes.delete(id);
+  else openNodes.add(id);
+  el.classList.toggle('open');
+
+  setTimeout(() => {
+    repositionNodes();
+    drawLines(selectedId ? getRelated(selectedId) : null);
+  }, 340);
+
+  // Toast tracks open nodes, not selection
+  document.getElementById('toast').classList.toggle('show', openNodes.size > 0);
+
+  // Clicking the selected node clears selection (nodes stay open)
+  if (selectedId === id) { clearSel(); return; }
+  selectedId = id;
+
+  const rel = getRelated(id);
+  document.querySelectorAll('.node').forEach(n => {
+    const nid = n.dataset.id;
+    n.classList.remove('is-selected','is-ancestor','is-descendant','is-dimmed');
+    if (nid === id)               n.classList.add('is-selected');
+    else if (rel.anc.has(nid))   n.classList.add('is-ancestor');
+    else if (rel.desc.has(nid))  n.classList.add('is-descendant');
+    else                          n.classList.add('is-dimmed');
+  });
+  drawLines(rel);
+}
+
+function clearSel() {
+  selectedId = null;
+  document.querySelectorAll('.node').forEach(n =>
+    n.classList.remove('is-selected','is-ancestor','is-descendant','is-dimmed'));
+  drawLines(null);
+  // openNodes and toast are NOT touched — expanded nodes stay open
+}
+
+function collapseAll() {
+  openNodes.clear();
+  document.querySelectorAll('.node.open').forEach(n => n.classList.remove('open'));
+  document.getElementById('toast').classList.remove('show');
+  setTimeout(() => {
+    repositionNodes();
+    drawLines(selectedId ? getRelated(selectedId) : null);
+  }, 340);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.node') && !e.target.closest('#toast')) clearSel();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') clearSel(); });
+document.getElementById('toast').addEventListener('click', collapseAll);
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+layoutByDate();
+buildDOM();
+requestAnimationFrame(() => {
+  syncHeights();
+  repositionNodes();
+  drawLines(null);
+});
+window.addEventListener('resize', () => drawLines(selectedId ? getRelated(selectedId) : null));
+</script>
+</body>
+</html>
