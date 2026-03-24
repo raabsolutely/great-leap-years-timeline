@@ -43,7 +43,7 @@ Click any node to highlight its **causal chain** in both directions:
 
 ## The podcast
 
-**Great Leap Years** by Stephen Fry — available on [BBC Sounds](https://www.bbc.co.uk/sounds) and major podcast platforms (Spotify, Apple Podcasts).
+**Great Leap Years** by Stephen Fry — available on [StephenFry.com]([https://www.bbc.co.uk/sounds](https://www.stephenfry.com/greatleapyears/)) and major podcast platforms (Spotify, Apple Podcasts).
 
 ---
 
