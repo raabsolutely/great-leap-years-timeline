@@ -41,7 +41,8 @@ body { background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sa
 .node.is-ghost   { border-color:var(--border-ghost); background:#FAFAF9; }
 .node.is-active  { border-color:var(--amber) !important; background:#FFFBEB; }
 .node.is-selected{ border-color:var(--amber) !important; box-shadow:0 0 0 2px rgba(180,83,9,0.18); }
-.node.is-dimmed  { opacity:0.18; filter:grayscale(70%); pointer-events:none; }
+.node.is-dimmed  { opacity:0.38; filter:grayscale(40%); }
+.node.is-dimmed:hover { opacity:0.62; border-color:var(--muted); }
 #toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(8px); background:#1C1917; color:#FFF; font-size:12px; padding:8px 18px; border-radius:20px; opacity:0; pointer-events:none; transition:opacity 0.2s,transform 0.2s; z-index:999; cursor:pointer; }
 #toast.show { opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
 </style>
@@ -246,16 +247,27 @@ const CONNECTIONS=[
   {from:'watson-ibm',         to:'deep-blue',               type:'person'},
 ];
 
-const PARENTS={};
+const PARENTS={},CHILDREN={};
 CONNECTIONS.forEach(c=>{
   if(!PARENTS[c.to])PARENTS[c.to]=[];
   PARENTS[c.to].push(c.from);
   if(c.fork){if(!PARENTS[c.fork])PARENTS[c.fork]=[];PARENTS[c.fork].push(c.from);}
+  if(!CHILDREN[c.from])CHILDREN[c.from]=[];
+  CHILDREN[c.from].push(c.to);
 });
 function getAncestors(id){
   const visited=new Set(),q=[id];
   while(q.length){const cur=q.shift();if(visited.has(cur))continue;visited.add(cur);(PARENTS[cur]||[]).forEach(p=>q.push(p));}
   return visited;
+}
+function getDescendants(id){
+  const visited=new Set(),q=[id];
+  while(q.length){const cur=q.shift();if(visited.has(cur))continue;visited.add(cur);(CHILDREN[cur]||[]).forEach(ch=>q.push(ch));}
+  return visited;
+}
+function getActiveSet(id){
+  const anc=getAncestors(id),desc=getDescendants(id);
+  return new Set([...anc,...desc]);
 }
 
 let nodePos={},mapBaseHeight=0;
@@ -404,32 +416,46 @@ let selectedId=null;
 function handleNodeClick(id,el){
   if(openNodes.has(id))openNodes.delete(id);else openNodes.add(id);
   el.classList.toggle('open');
-  setTimeout(()=>{repositionNodes();drawLines(selectedId?getAncestors(selectedId):null);},340);
-  if(selectedId===id){clearSel();return;}
+  const active=selectedId?getActiveSet(selectedId):null;
+  setTimeout(()=>{repositionNodes();drawLines(active);},340);
+  if(selectedId===id){
+    // deselect only — node open state already toggled above
+    selectedId=null;
+    document.querySelectorAll('.node').forEach(n=>n.classList.remove('is-selected','is-active','is-dimmed'));
+    document.getElementById('toast').classList.remove('show');
+    drawLines(null);
+    return;
+  }
   selectedId=id;
-  const anc=getAncestors(id);
+  const newActive=getActiveSet(id);
   document.querySelectorAll('.node').forEach(n=>{
     const nid=n.dataset.id;n.classList.remove('is-selected','is-active','is-dimmed');
     if(nid===id)n.classList.add('is-selected');
-    else if(anc.has(nid))n.classList.add('is-active');
+    else if(newActive.has(nid))n.classList.add('is-active');
     else n.classList.add('is-dimmed');
   });
   document.getElementById('toast').classList.add('show');
-  drawLines(anc);
+  drawLines(newActive);
 }
 function clearSel(){
-  selectedId=null;openNodes.clear();
-  document.querySelectorAll('.node').forEach(n=>n.classList.remove('is-selected','is-active','is-dimmed','open'));
+  selectedId=null;
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('is-selected','is-active','is-dimmed'));
   document.getElementById('toast').classList.remove('show');
+  drawLines(null);
+}
+function collapseAll(){
+  clearSel();
+  openNodes.clear();
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('open'));
   setTimeout(()=>{repositionNodes();drawLines(null);},340);
 }
 document.addEventListener('click',e=>{if(!e.target.closest('.node')&&!e.target.closest('#toast'))clearSel();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')clearSel();});
-document.getElementById('toast').addEventListener('click',clearSel);
+document.getElementById('toast').addEventListener('click',collapseAll);
 
 layoutByDate();buildDOM();
 requestAnimationFrame(()=>{syncHeights();repositionNodes();drawLines(null);});
-window.addEventListener('resize',()=>drawLines(selectedId?getAncestors(selectedId):null));
+window.addEventListener('resize',()=>drawLines(selectedId?getActiveSet(selectedId):null));
 </script>
 </body>
 </html>
